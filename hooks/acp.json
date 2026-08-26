@@ -1,0 +1,24 @@
+{
+  "acp": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "node \"$HOME/.acp/hooks/antigravity/hook.mjs\" pre_tool_use", "timeout": 30 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "node \"$HOME/.acp/hooks/antigravity/hook.mjs\" post_tool_use", "timeout": 30 }
+        ]
+      }
+    ],
+    "Stop": [
+      { "type": "command", "command": "node \"$HOME/.acp/hooks/antigravity/hook.mjs\" stop", "timeout": 10 }
+    ]
+  }
+}

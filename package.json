@@ -1,0 +1,35 @@
+{
+  "name": "@agenticcontrolplane/antigravity",
+  "version": "0.1.0",
+  "description": "Agentic Control Plane hook for Google Antigravity (agy) — identity, audit, and policy enforcement on every tool call, with a native force_ask mapping for approvals",
+  "type": "module",
+  "main": "hook.mjs",
+  "files": [
+    "hook.mjs",
+    "hooks/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "antigravity",
+    "agy",
+    "google",
+    "agent-governance",
+    "hooks",
+    "policy",
+    "audit",
+    "agentic-control-plane"
+  ],
+  "homepage": "https://agenticcontrolplane.com/controls/antigravity",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agentic-control-plane/antigravity-acp-plugin.git"
+  },
+  "license": "MIT"
+}
