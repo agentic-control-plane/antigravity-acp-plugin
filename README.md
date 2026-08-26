@@ -63,7 +63,7 @@ Antigravity runs hooks with a **sanitized environment** — configuration rides 
 
 ## Verified vs. pending
 
-The contract (decision vocabulary incl. `force_ask`, fail-closed hook errors, camelCase payload with no event name, sanitized env, output-less `PostToolUse`) is verified against the official docs and the `agy` 1.1.21 binary. Pending first live end-to-end: the exact `run_command` arg key (the hook normalizes every plausible spelling) and behavior under `--dangerously-skip-permissions`.
+Live-verified end to end (agy 1.1.21, 2026-08-26): the hook fires in real turns **before** the native permission layer; `run_command`'s arg key is **`CommandLine`** (normalized to the canonical `{command}` shape — the production hardline floor denied `rm -rf /` under the native tool name); headless soft-deny and session receipts behave as documented. Known limit, verified by A/B: **`--dangerously-skip-permissions` bypasses Antigravity's hook layer entirely** — no hook (this one included) is consulted under that flag. Still pending: `force_ask` rendering in the interactive TUI (offline-verified against the documented contract).
 
 ## Tests
 
