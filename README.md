@@ -2,7 +2,9 @@
 
 ![zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen) ![license](https://img.shields.io/badge/license-MIT-blue)
 
-[Agentic Control Plane](https://agenticcontrolplane.com) hook for **Google Antigravity** (`agy` — the CLI, the IDE, and the app share one hook registration). Every tool call is checked against your workspace policy before it runs, and ACP approvals surface as **native Antigravity prompt cards** via `force_ask` — the first harness whose hook vocabulary carries a first-class ask.
+[Agentic Control Plane](https://agenticcontrolplane.com) hook for **Google Antigravity** (`agy`; the CLI, the IDE and the app share one hook registration). Every tool call is checked against your workspace policy before it runs. How an `ask` reaches you is covered under [The ask decision](#the-ask-decision).
+
+**Known limit:** `--dangerously-skip-permissions` bypasses Antigravity's hook layer entirely, so no hook, this one included, is consulted under that flag. If you run `agy` unattended with that flag, ACP checks nothing and logs nothing for those runs. Run without it if you want calls checked.
 
 Before any tool runs, ACP is consulted via `/govern/tool-use`; after it runs, an audit/completion record goes to `/govern/tool-output`. Session end emits a receipt with a review link.
 
@@ -12,7 +14,7 @@ Before any tool runs, ACP is consulted via `/govern/tool-use`; after it runs, an
 curl -fsSL https://agenticcontrolplane.com/install.sh | bash
 ~~~
 
-The installer detects Antigravity, places the hook at `~/.acp/hooks/antigravity/hook.mjs`, and **merges** the registration into `~/.gemini/config/hooks.json` under its own `acp` key — the file is shared by the CLI, IDE, and app, so it is never overwritten. Manual install:
+The installer detects Antigravity, places the hook at `~/.acp/hooks/antigravity/hook.mjs`, and **merges** the registration into `~/.gemini/config/hooks.json` under its own `acp` key. The file is shared by the CLI, IDE and app, so it is never overwritten. Manual install:
 
 ~~~bash
 mkdir -p ~/.acp/hooks/antigravity ~/.gemini/config
@@ -29,32 +31,32 @@ Credentials live at `~/.acp/credentials` (the installer provisions them; or past
 
 | Antigravity event | ACP call | Effect |
 |---|---|---|
-| `PreToolUse` (matcher `*`) | `POST /govern/tool-use` | `deny` blocks; `ask` becomes native `force_ask`; `allow` proceeds |
-| `PostToolUse` | `POST /govern/tool-output` | Audit/completion record — the payload carries the call and error status, **not the tool's output**, so this is not a content scan |
-| `Stop` | — | Session receipt in the scrollback with a console review link |
+| `PreToolUse` (matcher `*`) | `POST /govern/tool-use` | `deny` blocks; `ask` is handed to Antigravity (below); `allow` proceeds |
+| `PostToolUse` | `POST /govern/tool-output` | Audit/completion record. The payload carries the call and error status, **not the tool's output**, so this is not a content scan |
+| `Stop` | none | Session receipt in the scrollback with a console review link |
 
 **Tool-name mapping.** Antigravity's native names (`run_command`, `view_file`, `replace_file_content`, …) map to the canonical vocabulary before the policy check so content floors fire; the native name is preserved as `client_tool_name` in the audit record. Unknown and MCP tool names pass through.
 
 ## The ask decision
 
-An ACP `ask` maps to Antigravity's **`force_ask`**: the human gets a native prompt card, and cached "Always Allow" grants deliberately do not pre-empt it. Headless (`-p`), Antigravity itself soft-denies unobtainable approvals (run continues, exit 0, stderr notice) — the correct unattended resolution, natively.
+An ACP `ask` is sent to Antigravity as **`force_ask`**, which is meant to show a native prompt card that cached "Always Allow" grants do not pre-empt. Whether the card renders in the interactive TUI is not yet verified. Until it is, expect to approve from the [console](https://cloud.agenticcontrolplane.com/approvals) and ask the agent to retry. In headless mode (`-p`), Antigravity soft-denies approvals nobody can give: the run continues, exit 0, with a stderr notice.
 
 ## Failure posture
 
-Antigravity's hook core is **fail-closed**: a crashed, timed-out, or non-zero-exiting hook blocks the tool call. This hook therefore always answers in JSON with exit 0 — including its own crash handling — and carries its own posture for gateway trouble:
+Antigravity's hook core is **fail-closed**: a crashed, timed-out, or non-zero-exiting hook blocks the tool call. This hook therefore always answers in JSON with exit 0, including in its own crash handling, and carries its own posture for gateway trouble:
 
-- **Interactive sessions**: gateway unreachable → fail **open**, loudly — `[ACP] ⚠ UNGOVERNED` on stderr and a durable line in `~/.acp/lapse.log`. An ACP outage must never brick your session.
-- **Unattended tiers**: fail **closed** — nobody is watching, so the block is the safety net.
-- One retry on transport failure; HTTP error statuses are the server answering — never retried.
-- Internal 4s decision budget ≪ the registered 30s timeout, so the hook always answers before the harness's error path.
+- **Interactive sessions**: if the gateway is unreachable, it fails **open**, loudly: `[ACP] ⚠ UNGOVERNED` on stderr and a durable line in `~/.acp/lapse.log`. The session keeps running.
+- **Unattended tiers**: fail **closed**. With nobody watching, a call that can't be checked is blocked.
+- One retry on transport failure; HTTP error statuses are the server answering and are never retried.
+- The internal decision budget is 4s, well under the registered 30s timeout, so the hook always answers before the harness's error path.
 
-Antigravity runs hooks with a **sanitized environment** — configuration rides in `~/.acp/config.json` (snake_case keys), not env vars. Unattended fleets should pin `"agent_tier": "background"` there.
+Antigravity runs hooks with a **sanitized environment**, so configuration rides in `~/.acp/config.json` (snake_case keys), not env vars. Unattended fleets should pin `"agent_tier": "background"` there.
 
 ## Configuration
 
 | Env (when it reaches the hook) | Config key | Default |
 |---|---|---|
-| `ACP_BEARER_TOKEN` | — | `~/.acp/credentials` |
+| `ACP_BEARER_TOKEN` | none | `~/.acp/credentials` |
 | `ACP_GOVERN_BASE` | `govern_base` | `https://govern.agenticcontrolplane.com` |
 | `ACP_CONSOLE_BASE` | `console_base` | `https://cloud.agenticcontrolplane.com` |
 | `ACP_AGENT_TIER` | `agent_tier` | `interactive` |
@@ -63,7 +65,7 @@ Antigravity runs hooks with a **sanitized environment** — configuration rides 
 
 ## Verified vs. pending
 
-Live-verified end to end (agy 1.1.21, 2026-08-26): the hook fires in real turns **before** the native permission layer; `run_command`'s arg key is **`CommandLine`** (normalized to the canonical `{command}` shape — the production hardline floor denied `rm -rf /` under the native tool name); headless soft-deny and session receipts behave as documented. Known limit, verified by A/B: **`--dangerously-skip-permissions` bypasses Antigravity's hook layer entirely** — no hook (this one included) is consulted under that flag. Still pending: `force_ask` rendering in the interactive TUI (offline-verified against the documented contract).
+Live-verified end to end (agy 1.1.21, 2026-08-26): the hook fires in real turns **before** the native permission layer; `run_command`'s arg key is **`CommandLine`** (normalized to the canonical `{command}` shape, and the production hardline floor denied `rm -rf /` under the native tool name); headless soft-deny and session receipts behave as documented. The `--dangerously-skip-permissions` limit above was verified by A/B. Still pending: `force_ask` rendering in the interactive TUI (offline-verified against the documented contract).
 
 ## Tests
 
@@ -71,7 +73,7 @@ Live-verified end to end (agy 1.1.21, 2026-08-26): the hook fires in real turns 
 node --test test/*.test.mjs
 ~~~
 
-15 offline tests against a mock gateway: payload parsing, canonical mapping, deny/force_ask/allow, both fail postures, config-file tier resolution, retry discipline, PostToolUse noise filtering, receipts.
+21 offline tests (15 in `hook.test.mjs`, 6 in `conformance.test.mjs`) against a mock gateway: payload parsing, canonical mapping, deny/force_ask/allow, both fail postures, config-file tier resolution, retry discipline, PostToolUse noise filtering, receipts.
 
 ## License
 
