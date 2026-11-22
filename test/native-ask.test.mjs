@@ -1,4 +1,4 @@
-// gatewaystack-connect#1518: honest attended claim + native_ask on PreToolUse,
+// honest attended claim + native_ask on PreToolUse,
 // and the gateway's branded ask reason reaching the force_ask card verbatim.
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'

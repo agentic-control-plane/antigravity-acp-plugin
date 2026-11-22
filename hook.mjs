@@ -9,7 +9,7 @@
  *
  *   hook.mjs pre_tool_use   -> POST {ACP_GOVERN}/govern/tool-use
  *   hook.mjs post_tool_use  -> POST {ACP_GOVERN}/govern/tool-output (audit)
- *   hook.mjs stop           -> session receipt (gatewaystack-connect#606)
+ *   hook.mjs stop           -> session receipt
  *
  * OUTPUT CONTRACT (official docs antigravity.google/docs/hooks/ + binary
  * strings of agy 1.1.21, 2026-08-26):
@@ -39,7 +39,7 @@
  * transcript file named in the payload has the full exchange; reading it
  * from the hook is a possible future enhancement.)
  *
- * Unreachability posture (gatewaystack-connect#385, never-brick): interactive
+ * Unreachability posture (never-brick): interactive
  * sessions fail OPEN with a loud UNGOVERNED warning and a ~/.acp/lapse.log
  * entry; unattended tiers fail CLOSED — nobody is watching, so the block is
  * the safety net. Antigravity runs hooks with a sanitized environment, so
@@ -100,7 +100,7 @@ function resolveTier(env = process.env, config = {}) {
 }
 
 /**
- * Attended claim (gatewaystack-connect#1518): the tier, where it came from,
+ * Attended claim: the tier, where it came from,
  * and whether a human will see a force_ask card. Antigravity's payload has
  * no permission mode and the hook env is sanitized, so the honest source is
  * the config file (`source: "config"`, the row the gateway allowlists for
@@ -121,7 +121,7 @@ export function resolveAttended(env = process.env, config = {}) {
 
 /**
  * Antigravity-native -> canonical tool names. The gateway's content floors
- * key on the canonical vocabulary (gatewaystack-connect#750) — the canonical
+ * key on the canonical vocabulary — the canonical
  * name goes in `tool_name` and the native name rides along as
  * `client_tool_name` for audit fidelity. Unknown names (including MCP
  * tools) pass through unchanged.
@@ -190,8 +190,8 @@ function encodeDeny(reason) {
   return { decision: 'deny', reason }
 }
 
-/** Lead-in the gateway puts on line 1 of a native-ask reason (gateway
- * govern/harnessAsk.ts ACP_ASK_PREFIX): already the whole human-facing text. */
+/** Lead-in the gateway puts on line 1 of a native-ask reason (the gateway's ask
+ * prefix): already the whole human-facing text. */
 export const ACP_ASK_PREFIX = 'ACP (Agentic Control Plane) asks: '
 
 function encodeAsk(reason) {
@@ -317,7 +317,7 @@ export async function decide(payload, event, env = process.env) {
     cwd: call.cwd,
     hook_event_name: call.event,
     agent_tier: tier,
-    // gatewaystack-connect#1518: the attended claim and the native_ask
+    // the attended claim and the native_ask
     // capability ride PreToolUse only. native_ask is honest: an "ask" maps to
     // force_ask, Antigravity's own prompt card, and headless soft-denies it.
     ...(call.event === 'PreToolUse'
@@ -348,7 +348,7 @@ export async function decide(payload, event, env = process.env) {
       return { out: {}, warn: `[ACP] Flagged after the fact: ${data.reason ?? 'policy'} — recorded in the audit log.` }
     }
     if (typeof data.notice === 'string' && data.notice.trim() && !/^(off|0|false)$/i.test(env.ACP_SHADOW ?? config.shadow ?? '')) {
-      // Shadow-mode counterfactual (#607): advisory, arrives with action "pass".
+      // Shadow-mode counterfactual: advisory, arrives with action "pass".
       bump(call.sessionId, 'notices')
       return { out: {}, warn: data.notice }
     }
@@ -361,7 +361,7 @@ export async function decide(payload, event, env = process.env) {
     try {
       data = await post(govern, headers, '/govern/tool-use', base, timeoutMs)
     } catch (first) {
-      // Retry once before applying the fail posture (gatewaystack-connect#690):
+      // Retry once before applying the fail posture:
       // slow answers are cold starts, so the retry lands on a warm instance.
       // Retry only a transport failure — an HTTP status is the server answering.
       if (first?.httpStatus !== undefined) throw first
