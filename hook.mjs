@@ -9,7 +9,7 @@
  *
  *   hook.mjs pre_tool_use   -> POST {ACP_GOVERN}/govern/tool-use
  *   hook.mjs post_tool_use  -> POST {ACP_GOVERN}/govern/tool-output (audit)
- *   hook.mjs stop           -> session receipt (gatewaystack-connect#606)
+ *   hook.mjs stop           -> session receipt
  *
  * OUTPUT CONTRACT (official docs antigravity.google/docs/hooks/ + binary
  * strings of agy 1.1.21, 2026-08-26):
@@ -39,7 +39,7 @@
  * transcript file named in the payload has the full exchange; reading it
  * from the hook is a possible future enhancement.)
  *
- * Unreachability posture (gatewaystack-connect#385, never-brick): interactive
+ * Unreachability posture (never-brick): interactive
  * sessions fail OPEN with a loud UNGOVERNED warning and a ~/.acp/lapse.log
  * entry; unattended tiers fail CLOSED — nobody is watching, so the block is
  * the safety net. Antigravity runs hooks with a sanitized environment, so
@@ -51,7 +51,7 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } fr
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-export const HOOK_VERSION = '0.1.0'
+export const HOOK_VERSION = '0.1.1'
 
 /** 200 KB ceiling on payload content sent for post-hoc audit (matches the backend). */
 const POST_HOOK_PAYLOAD_CEILING = 200 * 1024
@@ -96,15 +96,32 @@ function lapseLine(fields) {
  * Default is interactive (fail-open-loud posture).
  */
 function resolveTier(env = process.env, config = {}) {
-  if (env.ACP_AGENT_TIER) return env.ACP_AGENT_TIER
-  if (config.agent_tier) return config.agent_tier
-  if (env.CI) return 'background'
-  return 'interactive'
+  return resolveAttended(env, config).tier
+}
+
+/**
+ * Attended claim: the tier, where it came from,
+ * and whether a human will see a force_ask card. Antigravity's payload has
+ * no permission mode and the hook env is sanitized, so the honest source is
+ * the config file (`source: "config"`, the row the gateway allowlists for
+ * this harness); an env override reports `source: "env"`, which the gateway
+ * does not honour for Antigravity — the config file is the channel. The
+ * default (nothing pinned) is interactive: Antigravity itself soft-denies a
+ * force_ask in headless `-p` runs, so the empty chair never runs the call.
+ * `claim` is a positive statement either way.
+ */
+export function resolveAttended(env = process.env, config = {}) {
+  let tier, source
+  if (env.ACP_AGENT_TIER) { tier = env.ACP_AGENT_TIER; source = 'env' }
+  else if (config.agent_tier) { tier = config.agent_tier; source = 'config' }
+  else if (env.CI) { tier = 'background'; source = 'env' }
+  else { tier = 'interactive'; source = 'config' }
+  return { tier, claim: tier === 'interactive', source }
 }
 
 /**
  * Antigravity-native -> canonical tool names. The gateway's content floors
- * key on the canonical vocabulary (gatewaystack-connect#750) — the canonical
+ * key on the canonical vocabulary — the canonical
  * name goes in `tool_name` and the native name rides along as
  * `client_tool_name` for audit fidelity. Unknown names (including MCP
  * tools) pass through unchanged.
@@ -173,11 +190,21 @@ function encodeDeny(reason) {
   return { decision: 'deny', reason }
 }
 
+/** Lead-in the gateway puts on line 1 of a native-ask reason (the gateway's ask
+ * prefix): already the whole human-facing text. */
+export const ACP_ASK_PREFIX = 'ACP (Agentic Control Plane) asks: '
+
 function encodeAsk(reason) {
   // force_ask: prompt the human, ignoring cached "Always Allow" grants —
   // an ACP ask must reach a person, not a remembered local rule. Headless
   // runs soft-deny this natively (the empty chair resolves to deny).
   return { decision: 'force_ask', reason }
+}
+
+/** The card's text: the gateway's branded reason verbatim, else our headline. */
+export function askReason(reason) {
+  const r = reason ?? 'approval required'
+  return r.startsWith(ACP_ASK_PREFIX) ? r : `[ACP] Approval required: ${r}`
 }
 
 /**
@@ -244,7 +271,8 @@ export function buildReceiptMessage(stats, sessionId, consoleBase = 'https://clo
 export async function decide(payload, event, env = process.env) {
   const call = normalize(payload, canonEvent(event))
   const config = readConfig(env)
-  const tier = resolveTier(env, config)
+  const attended = resolveAttended(env, config)
+  const tier = attended.tier
   const token = readToken(env)
 
   if (call.event === 'Stop') {
@@ -289,6 +317,12 @@ export async function decide(payload, event, env = process.env) {
     cwd: call.cwd,
     hook_event_name: call.event,
     agent_tier: tier,
+    // the attended claim and the native_ask
+    // capability ride PreToolUse only. native_ask is honest: an "ask" maps to
+    // force_ask, Antigravity's own prompt card, and headless soft-denies it.
+    ...(call.event === 'PreToolUse'
+      ? { attended: { claim: attended.claim, source: attended.source }, capabilities: ['native_ask'] }
+      : {}),
   }
 
   if (call.event === 'PostToolUse') {
@@ -314,7 +348,7 @@ export async function decide(payload, event, env = process.env) {
       return { out: {}, warn: `[ACP] Flagged after the fact: ${data.reason ?? 'policy'} — recorded in the audit log.` }
     }
     if (typeof data.notice === 'string' && data.notice.trim() && !/^(off|0|false)$/i.test(env.ACP_SHADOW ?? config.shadow ?? '')) {
-      // Shadow-mode counterfactual (#607): advisory, arrives with action "pass".
+      // Shadow-mode counterfactual: advisory, arrives with action "pass".
       bump(call.sessionId, 'notices')
       return { out: {}, warn: data.notice }
     }
@@ -327,7 +361,7 @@ export async function decide(payload, event, env = process.env) {
     try {
       data = await post(govern, headers, '/govern/tool-use', base, timeoutMs)
     } catch (first) {
-      // Retry once before applying the fail posture (gatewaystack-connect#690):
+      // Retry once before applying the fail posture:
       // slow answers are cold starts, so the retry lands on a warm instance.
       // Retry only a transport failure — an HTTP status is the server answering.
       if (first?.httpStatus !== undefined) throw first
@@ -356,7 +390,7 @@ export async function decide(payload, event, env = process.env) {
     bump(call.sessionId, 'asked')
     // Native force_ask: the human answers at Antigravity's own prompt card,
     // cached "Always Allow" grants notwithstanding. Headless soft-denies.
-    return { out: encodeAsk(`[ACP] Approval required: ${data.reason ?? 'approval required'}`) }
+    return { out: encodeAsk(askReason(data.reason)) }
   }
   if (data.warning) return { out: ALLOW, warn: String(data.warning) }
   return { out: ALLOW }
