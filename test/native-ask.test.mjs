@@ -52,7 +52,7 @@ test('PreToolUse carries attended {claim, source} and native_ask; PostToolUse ca
   seen.length = 0
   await decide(payload('ls'), 'pre_tool_use', makeEnv())
   const pre = seen.find((s) => s.path === '/govern/tool-use').payload
-  assert.deepEqual(pre.attended, { claim: true, source: 'config' })
+  assert.deepEqual(pre.attended, { claim: true, source: 'default' })
   assert.deepEqual(pre.capabilities, ['native_ask'])
   assert.equal(pre.agent_tier, 'interactive')
   seen.length = 0
@@ -75,7 +75,33 @@ test('a pinned background tier is a positive claim:false, and the source names w
   seen.length = 0
   await decide(payload('ls'), 'pre_tool_use', makeEnv({ CI: '1' }))
   assert.deepEqual(seen[0].payload.attended, { claim: false, source: 'env' })
-  assert.deepEqual(resolveAttended({}, {}), { tier: 'interactive', claim: true, source: 'config' })
+  assert.deepEqual(resolveAttended({}, {}), { tier: 'interactive', claim: true, source: 'default' })
+})
+
+test('resolveAttended: "default" only when nothing pins the tier; config and env keep their sources', () => {
+  assert.deepEqual(resolveAttended({}, {}), { tier: 'interactive', claim: true, source: 'default' })
+  assert.deepEqual(resolveAttended({}, { agent_tier: 'interactive' }), { tier: 'interactive', claim: true, source: 'config' })
+  assert.deepEqual(resolveAttended({ ACP_AGENT_TIER: 'background' }, {}), { tier: 'background', claim: false, source: 'env' })
+  assert.deepEqual(resolveAttended({ CI: '1' }, {}), { tier: 'background', claim: false, source: 'env' })
+})
+
+test('unpinned PreToolUse body reports source "default" with native_ask; a config pin reports "config"', async () => {
+  seen.length = 0
+  await decide(payload('ls'), 'pre_tool_use', makeEnv())
+  const pre = seen.find((s) => s.path === '/govern/tool-use').payload
+  assert.deepEqual(pre.attended, { claim: true, source: 'default' })
+  assert.ok(pre.capabilities.includes('native_ask'))
+  seen.length = 0
+  const env = makeEnv()
+  writeFileSync(join(env.HOME, '.acp', 'config.json'), JSON.stringify({ agent_tier: 'interactive' }))
+  await decide(payload('ls'), 'pre_tool_use', env)
+  assert.deepEqual(seen[0].payload.attended, { claim: true, source: 'config' })
+  assert.ok(seen[0].payload.capabilities.includes('native_ask'))
+  seen.length = 0
+  await decide(payload('ls'), 'post_tool_use', makeEnv())
+  const post = seen.find((s) => s.path === '/govern/tool-output').payload
+  assert.equal('attended' in post, false)
+  assert.equal('capabilities' in post, false)
 })
 
 test('an ACP ask reaches the force_ask card with the gateway reason verbatim (no second headline)', async () => {

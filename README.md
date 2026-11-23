@@ -52,6 +52,8 @@ Antigravity's hook core is **fail-closed**: a crashed, timed-out, or non-zero-ex
 
 Antigravity runs hooks with a **sanitized environment**, so configuration rides in `~/.acp/config.json` (snake_case keys), not env vars. Unattended fleets should pin `"agent_tier": "background"` there.
 
+An install with no tier set runs as interactive but reports its attended source as `"default"`, which the gateway never treats as verified. To have the tier count as a deliberate setting, pin it in `~/.acp/config.json`, for example `"agent_tier": "interactive"`, and the hook reports `"config"` instead.
+
 ## Configuration
 
 | Env (when it reaches the hook) | Config key | Default |
