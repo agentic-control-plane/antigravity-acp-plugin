@@ -51,7 +51,7 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } fr
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-export const HOOK_VERSION = '0.1.1'
+export const HOOK_VERSION = '0.1.2'
 
 /** 200 KB ceiling on payload content sent for post-hoc audit (matches the backend). */
 const POST_HOOK_PAYLOAD_CEILING = 200 * 1024
@@ -106,16 +106,17 @@ function resolveTier(env = process.env, config = {}) {
  * the config file (`source: "config"`, the row the gateway allowlists for
  * this harness); an env override reports `source: "env"`, which the gateway
  * does not honour for Antigravity — the config file is the channel. The
- * default (nothing pinned) is interactive: Antigravity itself soft-denies a
- * force_ask in headless `-p` runs, so the empty chair never runs the call.
- * `claim` is a positive statement either way.
+ * default (nothing pinned) is interactive with `source: "default"`, so the
+ * gateway can tell a guess from a deliberate setting and never verifies it:
+ * Antigravity itself soft-denies a force_ask in headless `-p` runs, so the
+ * empty chair never runs the call. `claim` is a positive statement either way.
  */
 export function resolveAttended(env = process.env, config = {}) {
   let tier, source
   if (env.ACP_AGENT_TIER) { tier = env.ACP_AGENT_TIER; source = 'env' }
   else if (config.agent_tier) { tier = config.agent_tier; source = 'config' }
   else if (env.CI) { tier = 'background'; source = 'env' }
-  else { tier = 'interactive'; source = 'config' }
+  else { tier = 'interactive'; source = 'default' }
   return { tier, claim: tier === 'interactive', source }
 }
 
